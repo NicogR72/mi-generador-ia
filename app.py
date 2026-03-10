@@ -7,7 +7,7 @@ st.set_page_config(page_title="Mi Estudio Privado", layout="centered")
 st.sidebar.title("Configuración")
 password_correct = st.sidebar.text_input("Contraseña de acceso", type="password", key="pass_input")
 
-if password_correct != "TU_CONTRASEÑA_AQUI": # <--- CAMBIA ESTO
+if password_correct != "2525Nico.": # <--- CAMBIA ESTO
     st.error("Por favor, introduce la contraseña.")
     st.stop()
 

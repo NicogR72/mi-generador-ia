@@ -18,7 +18,7 @@ if "CLOUDINARY_CLOUD_NAME" in st.secrets:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# --- SEGURIDAD ---
+# --- 1. SEGURIDAD ---
 st.sidebar.title("🔐 Acceso")
 password = st.sidebar.text_input("Contraseña", type="password")
 if password != "2525Nico.": # <--- CAMBIA ESTO
@@ -26,6 +26,7 @@ if password != "2525Nico.": # <--- CAMBIA ESTO
     st.stop()
 
 st.title("🧦 SockEdit Enterprise")
+st.caption("Control Total: Presets + Prompt Manual")
 
 tab1, tab2 = st.tabs(["🖌️ Editor Pro", "📂 Archivo Histórico"])
 
@@ -35,51 +36,22 @@ with tab1:
     with col_in:
         st.subheader("Configuración")
         foto = st.file_uploader("Subir foto base", type=["jpg", "png", "jpeg"])
-        estilo = st.selectbox("Estilo", ["Fondo Blanco E-commerce", "Urbano Streetwear", "Lujo Cinematográfico"])
-        prompt_extra = st.text_area("Notas", "High quality, professional product shot.")
+        
+        # Agregamos la opción Manual al inicio
+        estilo = st.selectbox("Modo de Trabajo", [
+            "Manual (Usar solo mi prompt)", 
+            "Fondo Blanco E-commerce", 
+            "Urbano Streetwear", 
+            "Lujo Cinematográfico"
+        ])
+        
+        prompt_usuario = st.text_area("Tu Prompt / Instrucciones", 
+                                    placeholder="Ej: 'Transform these socks into a neon vaporwave style'...")
 
     with col_out:
         st.subheader("Resultado")
         if st.button("🚀 Renderizar", use_container_width=True):
-            if foto:
-                with st.spinner("Procesando..."):
+            if foto and prompt_usuario:
+                with st.spinner("Procesando con Seedream 5.0..."):
                     try:
-                        # Base64
-                        encoded = base64.b64encode(foto.getvalue()).decode("utf-8")
-                        data_uri = f"data:image/jpeg;base64,{encoded}"
-
-                        # API
-                        api_url = "https://fal.run/fal-ai/bytedance/seedream/v5/lite/edit"
-                        headers = {"Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}"}
-                        payload = {"prompt": f"{estilo} {prompt_extra}", "image_urls": [data_uri]}
-                        
-                        response = requests.post(api_url, json=payload, headers=headers)
-                        res_data = response.json()
-
-                        if "images" in res_data:
-                            p_url = res_data['images'][0]['url']
-                            
-                            # Intentar guardar en Cloudinary si está configurado
-                            try:
-                                up = cloudinary.uploader.upload(p_url, folder="productos_ia")
-                                p_url = up["secure_url"]
-                            except:
-                                pass # Si Cloudinary falla, usamos el link temporal de Fal
-
-                            # MOSTRAR LADO A LADO (Sin librerías extra)
-                            c1, c2 = st.columns(2)
-                            with c1: st.image(foto, caption="Antes")
-                            with c2: st.image(p_url, caption="Después (IA)")
-                            
-                            st.session_state.history.append({"final": p_url, "style": estilo})
-                        else:
-                            st.error(f"Error: {res_data}")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-
-with tab2:
-    if st.session_state.history:
-        grid = st.columns(3)
-        for idx, item in enumerate(reversed(st.session_state.history)):
-            with grid[idx % 3]:
-                st.image(item["final"], use_column_width=True)
+                        #

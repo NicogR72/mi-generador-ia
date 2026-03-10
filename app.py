@@ -37,7 +37,6 @@ with tab1:
         st.subheader("Configuración")
         foto = st.file_uploader("Subir foto base", type=["jpg", "png", "jpeg"])
         
-        # Agregamos la opción Manual al inicio
         estilo = st.selectbox("Modo de Trabajo", [
             "Manual (Usar solo mi prompt)", 
             "Fondo Blanco E-commerce", 
@@ -54,4 +53,23 @@ with tab1:
             if foto and prompt_usuario:
                 with st.spinner("Procesando con Seedream 5.0..."):
                     try:
-                        #
+                        # A. Preparar imagen
+                        img_bytes = foto.getvalue()
+                        encoded_string = base64.b64encode(img_bytes).decode("utf-8")
+                        data_uri = f"data:image/jpeg;base64,{encoded_string}"
+
+                        # B. Definir el prompt final
+                        if estilo == "Manual (Usar solo mi prompt)":
+                            final_prompt = prompt_usuario
+                        else:
+                            estilos_dict = {
+                                "Fondo Blanco E-commerce": "Pure white background, e-commerce style, studio lighting.",
+                                "Urbano Streetwear": "Concrete background, natural outdoor light, urban style.",
+                                "Lujo Cinematográfico": "Dramatic lighting, luxury bokeh background, 8k."
+                            }
+                            final_prompt = f"{estilos_dict[estilo]} {prompt_usuario}"
+
+                        # C. Llamada API
+                        api_url = "https://fal.run/fal-ai/bytedance/seedream/v5/lite/edit"
+                        headers = {"Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}"}
+                        payload = {"prompt": final_prompt,

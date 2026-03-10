@@ -3,17 +3,17 @@ import requests
 import base64
 import cloudinary
 import cloudinary.uploader
-from streamlit_image_comparison import image_comparison
 
-# --- CONFIGURACIÓN PRO ---
-st.set_page_config(page_title="SockEdit Pro Max", layout="wide", page_icon="🎨")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="SockEdit Pro Max", layout="wide", page_icon="🧦")
 
-# Conectar con tu baúl de Cloudinary
-cloudinary.config(
-    cloud_name = st.secrets["CLOUDINARY_CLOUD_NAME"],
-    api_key = st.secrets["CLOUDINARY_API_KEY"],
-    api_secret = st.secrets["CLOUDINARY_API_SECRET"]
-)
+# Configuración Cloudinary
+if "CLOUDINARY_CLOUD_NAME" in st.secrets:
+    cloudinary.config(
+        cloud_name = st.secrets["CLOUDINARY_CLOUD_NAME"],
+        api_key = st.secrets["CLOUDINARY_API_KEY"],
+        api_secret = st.secrets["CLOUDINARY_API_SECRET"]
+    )
 
 if "history" not in st.session_state:
     st.session_state.history = []
@@ -21,72 +21,65 @@ if "history" not in st.session_state:
 # --- SEGURIDAD ---
 st.sidebar.title("🔐 Acceso")
 password = st.sidebar.text_input("Contraseña", type="password")
-if password != "2525Nico.": # <--- PON TU CLAVE AQUÍ
-    st.error("Introduce la clave para editar.")
+if password != "2525Nico.": # <--- CAMBIA ESTO
+    st.error("Introduce la clave.")
     st.stop()
 
-st.title("🧦 SockEdit Enterprise: Seedream 5.0 Lite")
+st.title("🧦 SockEdit Enterprise")
 
-tab1, tab2 = st.tabs(["🖌️ Editor de Precisión", "📂 Archivo Histórico"])
+tab1, tab2 = st.tabs(["🖌️ Editor Pro", "📂 Archivo Histórico"])
 
 with tab1:
-    col_in, col_out = st.columns([1, 1.2])
+    col_in, col_out = st.columns([1, 1])
     
     with col_in:
-        st.subheader("Configuración de Producto")
+        st.subheader("Configuración")
         foto = st.file_uploader("Subir foto base", type=["jpg", "png", "jpeg"])
-        estilo = st.selectbox("Estilo de Renderizado", [
-            "Fondo Blanco E-commerce", "Urbano Streetwear", "Lujo Cinematográfico"
-        ])
-        prompt_extra = st.text_area("Notas de edición", "Mejorar texturas y suavizar sombras.")
+        estilo = st.selectbox("Estilo", ["Fondo Blanco E-commerce", "Urbano Streetwear", "Lujo Cinematográfico"])
+        prompt_extra = st.text_area("Notas", "High quality, professional product shot.")
 
     with col_out:
-        if st.button("🚀 Renderizar y Guardar", use_container_width=True):
-            if foto and prompt_extra:
-                with st.spinner("Editando y asegurando en la nube..."):
+        st.subheader("Resultado")
+        if st.button("🚀 Renderizar", use_container_width=True):
+            if foto:
+                with st.spinner("Procesando..."):
                     try:
-                        # A. Convertir a Base64
+                        # Base64
                         encoded = base64.b64encode(foto.getvalue()).decode("utf-8")
                         data_uri = f"data:image/jpeg;base64,{encoded}"
 
-                        # B. API Seedream
+                        # API
                         api_url = "https://fal.run/fal-ai/bytedance/seedream/v5/lite/edit"
                         headers = {"Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}"}
+                        payload = {"prompt": f"{estilo} {prompt_extra}", "image_urls": [data_uri]}
                         
-                        estilos = {
-                            "Fondo Blanco E-commerce": "Pure white background, e-commerce style, studio lighting.",
-                            "Urbano Streetwear": "Concrete background, natural outdoor light, urban style.",
-                            "Lujo Cinematográfico": "Dramatic lighting, luxury bokeh background, 8k."
-                        }
-                        
-                        payload = {"prompt": f"{estilos[estilo]} {prompt_extra}", "image_urls": [data_uri]}
                         response = requests.post(api_url, json=payload, headers=headers)
                         res_data = response.json()
 
                         if "images" in res_data:
-                            temp_url = res_data['images'][0]['url']
+                            p_url = res_data['images'][0]['url']
                             
-                            # C. Guardar Permanente en Cloudinary
-                            up = cloudinary.uploader.upload(temp_url, folder="productos_ia")
-                            p_url = up["secure_url"]
+                            # Intentar guardar en Cloudinary si está configurado
+                            try:
+                                up = cloudinary.uploader.upload(p_url, folder="productos_ia")
+                                p_url = up["secure_url"]
+                            except:
+                                pass # Si Cloudinary falla, usamos el link temporal de Fal
 
-                            # D. Comparador Visual
-                            image_comparison(img1=foto, img2=p_url, label1="Original", label2="IA Pro")
+                            # MOSTRAR LADO A LADO (Sin librerías extra)
+                            c1, c2 = st.columns(2)
+                            with c1: st.image(foto, caption="Antes")
+                            with c2: st.image(p_url, caption="Después (IA)")
                             
                             st.session_state.history.append({"final": p_url, "style": estilo})
-                            st.success("✨ Imagen guardada permanentemente.")
                         else:
-                            st.error(f"Error IA: {res_data}")
+                            st.error(f"Error: {res_data}")
                     except Exception as e:
                         st.error(f"Error: {e}")
 
 with tab2:
-    st.subheader("🗄️ Historial Permanente")
-    if not st.session_state.history:
-        st.info("No hay imágenes en el archivo todavía.")
-    else:
+    if st.session_state.history:
         grid = st.columns(3)
         for idx, item in enumerate(reversed(st.session_state.history)):
             with grid[idx % 3]:
                 st.image(item["final"], use_column_width=True)
-                st.caption(f"Estilo: {item['style']}")

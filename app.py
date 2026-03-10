@@ -623,6 +623,17 @@ with tab_inpaint:
 # ══════════════════════════════════════════
 #  TAB 3 — BATCH
 # ══════════════════════════════════════════
+
+# Inicializar session_state para batch
+if "batch_results" not in st.session_state:
+    st.session_state.batch_results = []
+if "batch_errors" not in st.session_state:
+    st.session_state.batch_errors  = []
+if "batch_fmt" not in st.session_state:
+    st.session_state.batch_fmt = "JPEG"
+if "batch_zip" not in st.session_state:
+    st.session_state.batch_zip = None
+
 with tab_batch:
     st.subheader("📦 Procesamiento Masivo")
     L3, R3 = st.columns([1, 1])
@@ -637,22 +648,45 @@ with tab_batch:
         is_manual_b = (cat_b == "✏️ Prompt Manual")
         if is_manual_b:
             st.info("✏️ Modo manual — escribe tú el prompt completo.")
-            preset_b_default = ""
+            preset_b_val = ""
         else:
             preset_b = st.selectbox("Preset", ["(personalizado)"] + PRESETS[cat_b], key="b_preset")
-            preset_b_default = preset_b if preset_b not in ("(personalizado)", "__MANUAL__") else ""
-        prompt_b = st.text_area("Prompt para TODAS las imágenes",
-                                value=preset_b_default,
-                                key="b_prompt")
-        neg_b    = st.text_area("Prompt negativo", height=60, key="b_neg")
+            preset_b_val = preset_b if preset_b not in ("(personalizado)", "__MANUAL__") else ""
+
+        # Botón para cargar el preset en el campo de texto
+        if not is_manual_b and preset_b_val:
+            if st.button("📋 Usar este preset como prompt", key="b_load_preset"):
+                st.session_state["b_prompt_text"] = preset_b_val
+                st.rerun()
+
+        if "b_prompt_text" not in st.session_state:
+            st.session_state["b_prompt_text"] = preset_b_val
+
+        prompt_b = st.text_area(
+            "✍️ Prompt que se aplicará a TODAS las imágenes",
+            value=st.session_state["b_prompt_text"],
+            height=120,
+            key="b_prompt",
+            help="Este es el prompt real que se envía a la IA. Si seleccionas un preset arriba, pulsa 'Usar este preset' para cargarlo aquí."
+        )
+        # Sincronizar con el state
+        st.session_state["b_prompt_text"] = prompt_b
+
+        if prompt_b:
+            st.caption(f"📝 Prompt activo ({len(prompt_b)} caracteres): `{prompt_b[:80]}{'…' if len(prompt_b)>80 else ''}`")
+        else:
+            st.warning("⚠️ El campo de prompt está vacío. Selecciona un preset o escribe uno.")
+
+        neg_b    = st.text_area("🚫 Prompt negativo", height=60, key="b_neg")
 
         c1, c2 = st.columns(2)
         with c1:
-            guid_b   = st.slider("Intensidad", 1.0, 20.0, 7.5, key="b_guid")
+            guid_b   = st.slider("Intensidad", 1.0, 20.0, 9.0, key="b_guid",
+                                  help="Mayor valor = más fiel al prompt. Recomendado 8-12 para cambios de fondo.")
             seed_b   = st.number_input("Seed", 0, 999999, 0, key="b_seed")
         with c2:
             size_b   = st.selectbox("Resolución", ["square_hd","square","portrait_4_3","landscape_4_3"], key="b_size")
-            auto_b   = st.checkbox("Auto-traducir", True, key="b_tr")
+            auto_b   = st.checkbox("Auto-traducir al inglés", True, key="b_tr")
 
         with st.expander("🔧 Post-proceso batch"):
             b_crop = st.checkbox("Recorte automático", key="b_crop")
@@ -669,73 +703,103 @@ with tab_batch:
             color = "🟢" if rem >= price_est else "🔴"
             st.info(f"{color} Coste estimado: **${price_est:.4f}** ({n_needed} imgs) — Saldo: **${rem:.4f}**")
 
-        batch_btn = st.button("🚀 Procesar todo", type="primary", use_container_width=True, key="batch_go")
+        c_go, c_clear = st.columns([2, 1])
+        with c_go:
+            batch_btn = st.button("🚀 Procesar todo", type="primary", use_container_width=True, key="batch_go")
+        with c_clear:
+            if st.button("🗑️ Limpiar", use_container_width=True, key="batch_clear"):
+                st.session_state.batch_results = []
+                st.session_state.batch_errors  = []
+                st.session_state.batch_zip     = None
+                st.rerun()
 
     with R3:
         st.subheader("Resultados")
 
         if batch_btn:
-            if not fotos_b:         st.warning("Sube imágenes."); st.stop()
-            if not prompt_b:        st.warning("Escribe un prompt."); st.stop()
-            price_total = get_price_per_image() * n_needed
-            if remaining_balance() < price_total:
-                st.error(f"Saldo insuficiente (necesario: ${price_total:.4f}, disponible: ${remaining_balance():.4f})"); st.stop()
+            if not fotos_b:
+                st.warning("Sube imágenes.")
+            elif not prompt_b:
+                st.warning("⚠️ El prompt está vacío. Selecciona un preset y pulsa 'Usar este preset' o escribe uno tú.")
+            else:
+                price_total = get_price_per_image() * n_needed
+                if remaining_balance() < price_total:
+                    st.error(f"Saldo insuficiente (necesario: ${price_total:.4f}, disponible: ${remaining_balance():.4f})")
+                else:
+                    fp_b = translate_to_english(prompt_b) if auto_b else prompt_b
+                    st.info(f"🌐 Prompt traducido: `{fp_b[:100]}…`" if len(fp_b) > 100 else f"🌐 Prompt: `{fp_b}`")
 
-            fp_b = translate_to_english(prompt_b) if auto_b else prompt_b
-            progress = st.progress(0, text="Iniciando cola de trabajos…")
-            results, errors = [], []
-            history = load_history()
+                    progress = st.progress(0, text="Iniciando cola de trabajos…")
+                    results, errors = [], []
+                    history = load_history()
 
-            for i, foto in enumerate(fotos_b):
-                progress.progress(i / len(fotos_b), text=f"⚙️ Procesando {i+1}/{len(fotos_b)}: {foto.name}")
-                try:
-                    data = call_edit(prompt=fp_b, img_b64=file_to_b64(foto),
-                                     neg=neg_b, seed=seed_b if seed_b > 0 else None,
-                                     guidance=guid_b, num=1, size=size_b)
-                    if "images" in data:
-                        deduct_balance(1)
-                        url  = upload_cloudinary(data["images"][0]["url"])
-                        pil  = fetch_pil(url)
-                        raw, pil_pp = post_process(pil, crop=b_crop, crop_ratio=b_ratio,
-                                                   compress=b_comp, quality=b_q, fmt=b_fmt)
-                        results.append({"name": foto.name, "bytes": raw, "pil": pil_pp, "url": url})
-                        history.append({"url": url, "mode": "batch", "final_prompt": fp_b,
-                                        "filename": foto.name, "date": datetime.now().strftime("%Y-%m-%d %H:%M")})
-                    else:
-                        errors.append(f"{foto.name}: {data}")
-                except Exception as e:
-                    errors.append(f"{foto.name}: {str(e)}")
+                    for i, foto in enumerate(fotos_b):
+                        progress.progress(i / len(fotos_b), text=f"⚙️ Procesando {i+1}/{len(fotos_b)}: {foto.name}")
+                        try:
+                            data = call_edit(prompt=fp_b, img_b64=file_to_b64(foto),
+                                             neg=neg_b, seed=seed_b if seed_b > 0 else None,
+                                             guidance=guid_b, num=1, size=size_b)
+                            if "images" in data:
+                                deduct_balance(1)
+                                url  = upload_cloudinary(data["images"][0]["url"])
+                                pil  = fetch_pil(url)
+                                raw, pil_pp = post_process(pil, crop=b_crop, crop_ratio=b_ratio,
+                                                           compress=b_comp, quality=b_q, fmt=b_fmt)
+                                results.append({"name": foto.name, "bytes": raw, "pil": pil_pp, "url": url, "fmt": b_fmt})
+                                history.append({"url": url, "mode": "batch", "final_prompt": fp_b,
+                                                "filename": foto.name, "date": datetime.now().strftime("%Y-%m-%d %H:%M")})
+                            else:
+                                errors.append(f"{foto.name}: {data}")
+                        except Exception as e:
+                            errors.append(f"{foto.name}: {str(e)}")
 
-            progress.progress(1.0, text=f"✅ Completado: {len(results)}/{len(fotos_b)}")
-            save_history(history)
+                    progress.progress(1.0, text=f"✅ Completado: {len(results)}/{len(fotos_b)}")
+                    save_history(history)
 
-            if results:
-                # ZIP
-                zip_buf = io.BytesIO()
-                with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                    for res in results:
-                        fname = f"edited_{os.path.splitext(res['name'])[0]}.{b_fmt.lower()}"
-                        zf.writestr(fname, res["bytes"])
+                    # Guardar ZIP en session_state
+                    if results:
+                        zip_buf = io.BytesIO()
+                        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                            for res in results:
+                                fname = f"edited_{os.path.splitext(res['name'])[0]}.{b_fmt.lower()}"
+                                zf.writestr(fname, res["bytes"])
+                        st.session_state.batch_zip = zip_buf.getvalue()
+                        st.session_state.batch_fmt = b_fmt
 
+                    # Almacenar resultados en session_state (bytes no serializables, guardar PIL como bytes)
+                    st.session_state.batch_results = results
+                    st.session_state.batch_errors  = errors
+
+        # ── Mostrar resultados persistentes desde session_state ──
+        results_to_show = st.session_state.batch_results
+        errors_to_show  = st.session_state.batch_errors
+        fmt_to_show     = st.session_state.batch_fmt
+
+        if results_to_show:
+            if st.session_state.batch_zip:
                 st.download_button(
-                    f"📦 Descargar todo en ZIP ({len(results)} imágenes)",
-                    data=zip_buf.getvalue(),
+                    f"📦 Descargar todo en ZIP ({len(results_to_show)} imágenes)",
+                    data=st.session_state.batch_zip,
                     file_name=f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                    mime="application/zip", type="primary", key="batch_zip",
+                    mime="application/zip", type="primary", key="batch_zip_dl",
                 )
-                st.markdown("---")
+            st.markdown("---")
+            st.success(f"✅ {len(results_to_show)} imagen(es) listas — descarga las que quieras o el ZIP completo arriba")
+            cols = st.columns(min(3, len(results_to_show)))
+            for idx, res in enumerate(results_to_show):
+                with cols[idx % 3]:
+                    st.image(res["pil"], caption=res["name"], use_column_width=True)
+                    st.download_button(
+                        f"⬇️ Descargar",
+                        data=res["bytes"],
+                        file_name=f"edited_{os.path.splitext(res['name'])[0]}.{fmt_to_show.lower()}",
+                        mime=f"image/{fmt_to_show.lower()}",
+                        key=f"b_dl_{idx}_{res['name']}",
+                    )
 
-                cols = st.columns(min(3, len(results)))
-                for idx, res in enumerate(results):
-                    with cols[idx % 3]:
-                        st.image(res["pil"], caption=res["name"], use_column_width=True)
-                        st.download_button(f"⬇️ {res['name']}", data=res["bytes"],
-                                           file_name=f"edited_{os.path.splitext(res['name'])[0]}.{b_fmt.lower()}",
-                                           mime=f"image/{b_fmt.lower()}", key=f"b_dl_{idx}")
-
-            if errors:
-                with st.expander(f"⚠️ {len(errors)} error(es)"):
-                    for e in errors: st.error(e)
+        if errors_to_show:
+            with st.expander(f"⚠️ {len(errors_to_show)} error(es)"):
+                for e in errors_to_show: st.error(e)
 
 # ══════════════════════════════════════════
 #  TAB 4 — PROMPTS

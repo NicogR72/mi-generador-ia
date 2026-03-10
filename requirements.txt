@@ -1,4 +1,4 @@
 streamlit
 requests
 cloudinary
-streamlit-image-comparison
+streamlit-image-comparison 

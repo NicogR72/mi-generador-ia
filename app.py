@@ -28,14 +28,48 @@ if st.button("🚀 Generar Imagen Ahora"):
     if not prompt:
         st.warning("Escribe algo primero.")
     else:
-        with st.spinner("Seedream está soñando tu imagen..."):
+        with st.spinner("Seedream está trabajando en tus medias..."):
             try:
-                # --- REEMPLAZA DESDE EL PAYLOAD HASTA EL IMAGE_URL ---
+                # 1. Configuración de lo que le pedimos a la IA
                 payload = {
                     "prompt": prompt,
-                    "image_size": "square_hd" if aspect_ratio == "1:1" else "landscape_hd",
-                    "num_inference_steps": 30 if quality == "Baja" else 50
+                    "image_size": "square_hd" if aspect_ratio == "1:1" else "landscape_hd"
                 }
+                
+                # 2. Tus credenciales (Sacadas de la pestaña Secrets de Streamlit)
+                headers = {
+                    "Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}",
+                    "Content-Type": "application/json"
+                }
+
+                # 3. La dirección de la "puerta" de Seedream en Fal.ai
+                api_url = "https://fal.run/fal-ai/seedream-v5-lite"
+                
+                # 4. Enviamos la petición
+                response = requests.post(api_url, json=payload, headers=headers)
+                data = response.json()
+                
+                # 5. REVISIÓN DE RESULTADOS (Aquí es donde evitamos el error 'images')
+                if "images" in data:
+                    # Si todo salió bien, mostramos la imagen
+                    image_url = data['images'][0]['url']
+                    st.image(image_url, caption="¡Tus medias listas!", use_column_width=True)
+                    
+                    # Botón para que la bajes a tu PC
+                    img_data = requests.get(image_url).content
+                    st.download_button("📥 Descargar Imagen", img_data, "mis_medias.png")
+                
+                elif "detail" in data:
+                    # Si la API nos rechaza por algo (ej: falta de saldo)
+                    st.error(f"La API dice: {data['detail']}")
+                
+                else:
+                    # Si pasa algo raro, vemos el mensaje completo para investigar
+                    st.warning("Respuesta inesperada del servidor:")
+                    st.write(data)
+
+            except Exception as e:
+                st.error(f"Hubo un error local: {e}")
                 
                 headers = {
                     "Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}", # Nota que Fal usa 'Key' no 'Bearer'

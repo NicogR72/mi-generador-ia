@@ -30,26 +30,27 @@ if st.button("🚀 Generar Imagen Ahora"):
     else:
         with st.spinner("Seedream está soñando tu imagen..."):
             try:
-                # Aquí conectamos con el proveedor de la API (ejemplo: Wavespeed o Segmind)
+                # --- REEMPLAZA DESDE EL PAYLOAD HASTA EL IMAGE_URL ---
                 payload = {
-                    "model": "seedream-5-lite",
                     "prompt": prompt,
-                    "aspect_ratio": aspect_ratio,
-                    "private": True  # IMPORTANTE: Indica que no sea pública
+                    "image_size": "square_hd" if aspect_ratio == "1:1" else "landscape_hd",
+                    "num_inference_steps": 30 if quality == "Baja" else 50
                 }
                 
                 headers = {
-                    "Authorization": f"Bearer {st.secrets['SEEDREAM_API_KEY']}",
+                    "Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}", # Nota que Fal usa 'Key' no 'Bearer'
                     "Content-Type": "application/json"
                 }
 
-                # Llamada real a la API
-                response = requests.post("https://api.wavespeed.ai/v1/generate", json=payload, headers=headers)
+                # URL específica para Seedream en Fal.ai
+                api_url = "https://fal.run/fal-ai/seedream-v5-lite"
+                
+                response = requests.post(api_url, json=payload, headers=headers)
                 data = response.json()
                 
-                # Mostrar resultado
-                image_url = data['output_url']
-                st.image(image_url, caption="Generado con Seedream 5.0 Lite", use_column_width=True)
+                # En Fal.ai la imagen suele venir en una lista llamada 'images'
+                image_url = data['images'][0]['url']
+                st.image(image_url, caption="¡Tus medias listas!", use_column_width=True)
                 
                 # Botón de descarga directa
                 st.download_button("Descargar Imagen", requests.get(image_url).content, "imagen_generada.png")

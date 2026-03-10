@@ -33,7 +33,7 @@ if st.button("🚀 Generar Imagen Ahora"):
                 # 1. Configuración de lo que le pedimos a la IA
                 payload = {
                     "prompt": prompt,
-                    "image_size": "square_hd" if aspect_ratio == "1:1" else "landscape_hd"
+                    "image_urls": [] # Se añade esto para que el modelo 'edit' no de error al no recibir fotos
                 }
                 
                 # 2. Tus credenciales (Sacadas de la pestaña Secrets de Streamlit)
@@ -43,7 +43,7 @@ if st.button("🚀 Generar Imagen Ahora"):
                 }
 
                 # 3. La dirección de la "puerta" de Seedream en Fal.ai
-                api_url = "https://fal.run/fal-ai/bytedance/seedream-5-lite"
+                api_url = "https://fal.run/fal-ai/bytedance/seedream/v5/lite/edit"
                 
                 # 4. Enviamos la petición
                 response = requests.post(api_url, json=payload, headers=headers)

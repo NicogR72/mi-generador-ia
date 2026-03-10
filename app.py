@@ -43,7 +43,7 @@ if st.button("🚀 Generar Imagen Ahora"):
                 }
 
                 # 3. La dirección de la "puerta" de Seedream en Fal.ai
-                api_url = "https://fal.run/fal-ai/bytedance/seedream-5-lite"
+                api_url = "fal-ai/bytedance/seedream/v5/lite/edit"
                 
                 # 4. Enviamos la petición
                 response = requests.post(api_url, json=payload, headers=headers)

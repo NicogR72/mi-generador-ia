@@ -1,106 +1,115 @@
 import streamlit as st
 import requests
 import base64
-from datetime import datetime
+import cloudinary
+import cloudinary.uploader
+from streamlit_image_comparison import image_comparison
 
-# Configuración de página con icono profesional
-st.set_page_config(page_title="SockEdit Pro | Seedream 5.0", layout="wide", page_icon="🧦")
+# --- CONFIGURACIÓN PRO ---
+st.set_page_config(page_title="SockEdit Pro Max", layout="wide", page_icon="🎨")
 
-# --- 1. SEGURIDAD Y CONFIGURACIÓN ---
-if "gallery" not in st.session_state:
-    st.session_state.gallery = []
+# Configurar Cloudinary (Tu Baúl Permanente)
+cloudinary.config(
+    cloud_name = st.secrets["CLOUDINARY_CLOUD_NAME"],
+    api_key = st.secrets["CLOUDINARY_API_KEY"],
+    api_secret = st.secrets["CLOUDINARY_API_SECRET"]
+)
 
-password_correct = st.sidebar.text_input("🔑 Contraseña", type="password")
-if password_correct != "2525Nico.": # <--- CAMBIA ESTO
-    st.info("Introduce la contraseña para desbloquear el panel profesional.")
+# --- SEGURIDAD ---
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+password = st.sidebar.text_input("🔑 Acceso Profesional", type="password")
+if password != "TU_CONTRASEÑA_AQUI": # <--- CAMBIA ESTO
+    st.warning("Panel bloqueado. Introduce tu clave.")
     st.stop()
 
-st.sidebar.success("Conectado a Seedream 5.0 Lite")
-st.sidebar.markdown("---")
-st.sidebar.write(f"📅 Sesión: {datetime.now().strftime('%d/%m/%Y')}")
+# --- INTERFAZ ---
+st.title("🧦 SockEdit Pro Max: Enterprise Edition")
+st.info("Modelo activo: Seedream 5.0 Lite + Almacenamiento Permanente Cloudinary")
 
-# --- 2. TABS PROFESIONALES ---
-tab1, tab2 = st.tabs(["🚀 Editor de Producto", "🖼️ Galería de Sesión"])
+tab1, tab2 = st.tabs(["🖌️ Editor de Precisión", "📂 Archivo Histórico"])
 
 with tab1:
-    st.title("🧦 SockEdit Pro")
-    st.caption("Impulsado por ByteDance Seedream 5.0 Lite")
+    col_input, col_output = st.columns([1, 1])
     
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        st.subheader("1. Cargar Producto")
-        foto_original = st.file_uploader("Sube la foto base", type=["jpg", "png", "jpeg"])
-        if foto_original:
-            st.image(foto_original, caption="Original", use_column_width=True)
-
-    with col2:
-        st.subheader("2. Ajustes de Edición")
+    with col_input:
+        st.subheader("Configuración")
+        foto = st.file_uploader("Imagen base", type=["jpg", "png", "jpeg"])
         
-        # Selector de color rápido
-        color_deseado = st.color_picker("Color de énfasis (Opcional)", "#ffffff")
-        
-        # Presets profesionales
-        preset = st.selectbox("Elegir Estilo (Preset)", [
-            "Manual (Usar mi prompt)",
-            "Fondo Blanco E-commerce (Amazon/Shopify Style)",
-            "Estilo Urbano / Streetwear",
-            "Fotografía de Lujo / Cinematic",
-            "Cambio de Color / Texture Boost"
+        estilo = st.selectbox("Estilo de Renderizado", [
+            "Pure White E-commerce", 
+            "Lifestyle Street", 
+            "High-End Luxury",
+            "Studio Softbox"
         ])
         
-        prompt_usuario = st.text_area("Instrucciones adicionales:", placeholder="Ej: Añadir sombras suaves debajo...")
+        prompt_extra = st.text_area("Instrucciones de retoque", "Enhance textures and fix shadows.")
+        
+    with col_output:
+        st.subheader("Resultado")
+        if st.button("🚀 Ejecutar Renderizado Pro", use_container_width=True):
+            if foto:
+                with st.spinner("Procesando píxeles..."):
+                    try:
+                        # 1. Preparar Base64
+                        encoded = base64.b64encode(foto.getvalue()).decode("utf-8")
+                        data_uri = f"data:image/jpeg;base64,{encoded}"
 
-    # --- LÓGICA DE PROMPTS ---
-    final_prompt = prompt_usuario
-    if preset == "Fondo Blanco E-commerce (Amazon/Shopify Style)":
-        final_prompt = f"Product photography of the socks on a pure white minimalist background, studio lighting, high contrast, 8k, {prompt_usuario}"
-    elif preset == "Estilo Urbano / Streetwear":
-        final_prompt = f"Socks worn in a street style setting, concrete background, natural sunlight, urban vibe, {prompt_usuario}"
-    elif preset == "Fotografía de Lujo / Cinematic":
-        final_prompt = f"Luxury advertising photography, soft bokeh background, dramatic lighting, high weave detail, {prompt_usuario}"
-
-    # --- BOTÓN DE ACCIÓN ---
-    if st.button("✨ Procesar con IA", use_container_width=True):
-        if not foto_original:
-            st.warning("Primero sube una foto.")
-        else:
-            with st.spinner("La IA está reinterpretando tu producto..."):
-                try:
-                    # Preparar imagen
-                    img_bytes = foto_original.getvalue()
-                    encoded_string = base64.b64encode(img_bytes).decode("utf-8")
-                    data_uri = f"data:image/jpeg;base64,{encoded_string}"
-
-                    # Llamada API
-                    api_url = "https://fal.run/fal-ai/bytedance/seedream/v5/lite/edit"
-                    headers = {"Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}", "Content-Type": "application/json"}
-                    payload = {"prompt": final_prompt, "image_urls": [data_uri]}
-
-                    response = requests.post(api_url, json=payload, headers=headers)
-                    data = response.json()
-
-                    if "images" in data:
-                        res_url = data['images'][0]['url']
-                        st.image(res_url, caption="Resultado Pro", use_column_width=True)
+                        # 2. Llamar a Seedream
+                        api_url = "https://fal.run/fal-ai/bytedance/seedream/v5/lite/edit"
+                        headers = {"Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}"}
                         
-                        # Guardar en galería de sesión
-                        st.session_state.gallery.append({"img": res_url, "prompt": final_prompt, "time": datetime.now()})
+                        # Prompt dinámico según estilo
+                        prompts = {
+                            "Pure White E-commerce": "Professional product photography, pure white background, soft shadows, 8k high resolution.",
+                            "Lifestyle Street": "Streetwear aesthetic, concrete background, urban lighting, high detail.",
+                            "High-End Luxury": "Luxury product shot, silk textures, dramatic lighting, bokeh background.",
+                            "Studio Softbox": "Studio lighting, clean setup, minimalist, hyper-realistic."
+                        }
                         
-                        st.download_button("📥 Descargar Alta Calidad", requests.get(res_url).content, "editada_pro.png")
-                    else:
-                        st.error(f"Error: {data}")
-                except Exception as e:
-                    st.error(f"Error técnico: {e}")
+                        full_prompt = f"{prompts[estilo]} {prompt_extra}"
+                        
+                        response = requests.post(api_url, json={"prompt": full_prompt, "image_urls": [data_uri]}, headers=headers)
+                        res_data = response.json()
+
+                        if "images" in res_data:
+                            temp_url = res_data['images'][0]['url']
+                            
+                            # 3. GUARDAR PARA SIEMPRE EN CLOUDINARY
+                            upload_res = cloudinary.uploader.upload(temp_url, folder="mis_medias")
+                            permanent_url = upload_res["secure_url"]
+
+                            # 4. COMPARADOR ANTES/DESPUÉS
+                            st.write("### Comparativa (Desliza para ver el cambio)")
+                            image_comparison(
+                                img1=foto,
+                                img2=permanent_url,
+                                label1="Original",
+                                label2="Editada por IA"
+                            )
+                            
+                            # Guardar en historial
+                            st.session_state.history.append({
+                                "original": foto,
+                                "final": permanent_url,
+                                "prompt": full_prompt
+                            })
+                            
+                            st.success("✅ Imagen guardada permanentemente en tu nube.")
+                        else:
+                            st.error(f"Error IA: {res_data}")
+                    except Exception as e:
+                        st.error(f"Error técnico: {e}")
+            else:
+                st.warning("Sube una foto primero.")
 
 with tab2:
-    st.header("🖼️ Historial de la Sesión")
-    if not st.session_state.gallery:
-        st.info("Aún no has generado imágenes en esta sesión.")
+    st.header("🗄️ Tu Archivo de Producto")
+    if not st.session_state.history:
+        st.write("Tu baúl está vacío.")
     else:
-        # Mostrar galería en cuadrícula de 3 columnas
-        cols = st.columns(3)
-        for i, item in enumerate(reversed(st.session_state.gallery)):
-            with cols[i % 3]:
-                st.image(item["img"], use_column_width=True)
-                st.caption(f"Hace un momento")
+        for item in reversed(st.session_state.history):
+            with st.expander(f"Edición: {item['prompt'][:50]}..."):
+                st.image(item['final'], use_column_width=True)
+                st.write(f"**Link permanente:** {item['final']}")

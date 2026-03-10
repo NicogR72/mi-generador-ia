@@ -4,10 +4,10 @@ import base64
 import cloudinary
 import cloudinary.uploader
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN BÁSICA ---
 st.set_page_config(page_title="SockEdit Pro Max", layout="wide", page_icon="🧦")
 
-# Configuración Cloudinary (Baúl Permanente)
+# Configuración Cloudinary
 if "CLOUDINARY_CLOUD_NAME" in st.secrets:
     cloudinary.config(
         cloud_name = st.secrets["CLOUDINARY_CLOUD_NAME"],
@@ -21,12 +21,12 @@ if "history" not in st.session_state:
 # --- 1. SEGURIDAD ---
 st.sidebar.title("🔐 Acceso")
 password = st.sidebar.text_input("Contraseña", type="password")
-if password != "2525Nico.": # <--- CAMBIA ESTO
+if password != "2525Nico.": # <--- CAMBIA ESTO POR TU CLAVE
     st.error("Introduce la clave.")
     st.stop()
 
 st.title("🧦 SockEdit Enterprise")
-st.caption("Control Total: Presets + Prompt Manual")
+st.caption("ByteDance Seedream 5.0 Lite + Cloudinary")
 
 tab1, tab2 = st.tabs(["🖌️ Editor Pro", "📂 Archivo Histórico"])
 
@@ -35,36 +35,72 @@ with tab1:
     with col_in:
         st.subheader("Configuración")
         foto = st.file_uploader("Subir foto base", type=["jpg", "png", "jpeg"])
-        estilo = st.selectbox("Modo de Trabajo", [
-            "Manual (Usar solo mi prompt)", 
-            "Fondo Blanco E-commerce", 
-            "Urbano Streetwear", 
-            "Lujo Cinematográfico"
-        ])
-        prompt_usuario = st.text_area("Tu Prompt / Instrucciones", placeholder="Describe el cambio...")
+        estilo = st.selectbox("Modo de Trabajo", ["Manual", "Fondo Blanco", "Urbano", "Lujo"])
+        prompt_usuario = st.text_area("Instrucciones", placeholder="Describe el cambio...")
 
     with col_out:
         st.subheader("Resultado")
         if st.button("🚀 Renderizar", use_container_width=True):
             if foto and prompt_usuario:
-                with st.spinner("Procesando con Seedream 5.0..."):
+                with st.spinner("Procesando..."):
                     try:
-                        # A. Imagen a Base64
+                        # A. Convertir imagen a Base64
                         img_bytes = foto.getvalue()
                         encoded_string = base64.b64encode(img_bytes).decode("utf-8")
                         data_uri = f"data:image/jpeg;base64,{encoded_string}"
 
-                        # B. Lógica de Prompts
-                        if estilo == "Manual (Usar solo mi prompt)":
-                            final_prompt = prompt_usuario
+                        # B. Construir el Prompt
+                        if estilo == "Fondo Blanco":
+                            final_prompt = f"Pure white background, e-commerce style, studio lighting. {prompt_usuario}"
+                        elif estilo == "Urbano":
+                            final_prompt = f"Urban streetwear setting, concrete background, natural light. {prompt_usuario}"
+                        elif estilo == "Lujo":
+                            final_prompt = f"Luxury cinematic shot, bokeh, high-end lighting. {prompt_usuario}"
                         else:
-                            estilos_dict = {
-                                "Fondo Blanco E-commerce": "Pure white background, e-commerce style, studio lighting.",
-                                "Urbano Streetwear": "Concrete background, natural outdoor light, urban style.",
-                                "Lujo Cinematográfico": "Dramatic lighting, luxury bokeh background, 8k."
-                            }
-                            final_prompt = f"{estilos_dict[estilo]} {prompt_usuario}"
+                            final_prompt = prompt_usuario
 
-                        # C. Petición a la API (Aquí estaba el error de la llave)
+                        # C. Llamada a la API de Fal.ai
                         api_url = "https://fal.run/fal-ai/bytedance/seedream/v5/lite/edit"
-                        headers
+                        headers = {
+                            "Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}",
+                            "Content-Type": "application/json"
+                        }
+                        payload = {
+                            "prompt": final_prompt,
+                            "image_urls": [data_uri]
+                        }
+
+                        response = requests.post(api_url, json=payload, headers=headers)
+                        data = response.json()
+
+                        if "images" in data:
+                            res_url = data['images'][0]['url']
+                            # Guardar en Cloudinary
+                            try:
+                                upload = cloudinary.uploader.upload(res_url, folder="productos_ia")
+                                res_url = upload["secure_url"]
+                            except:
+                                pass
+
+                            # Mostrar imágenes lado a lado
+                            c1, c2 = st.columns(2)
+                            with c1: st.image(foto, caption="Original")
+                            with c2: st.image(res_url, caption="Editada")
+                            
+                            st.session_state.history.append({"url": res_url, "txt": final_prompt})
+                            st.success("¡Imagen generada con éxito!")
+                        else:
+                            st.error(f"Error de la IA: {data}")
+
+                    except Exception as e:
+                        st.error(f"Error técnico: {e}")
+            else:
+                st.warning("Sube una foto y escribe una instrucción.")
+
+with tab2:
+    if st.session_state.history:
+        grid = st.columns(3)
+        for idx, item in enumerate(reversed(st.session_state.history)):
+            with grid[idx % 3]:
+                st.image(item["url"], use_column_width=True)
+                st.caption(f"Prompt: {item['txt'][:30]}...")

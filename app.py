@@ -41,6 +41,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 HISTORY_FILE  = f"{DATA_DIR}/history.json"
 PROMPTS_FILE  = f"{DATA_DIR}/prompts.json"
 CREDITS_FILE  = f"{DATA_DIR}/credits.json"
+PRICING_CACHE_FILE = f"{DATA_DIR}/pricing_cache.json"
 
 # ═══════════════════════════════════════════════════════════
 #  DATA HELPERS
@@ -60,19 +61,78 @@ def save_history(h): save_json(HISTORY_FILE, h)
 def load_prompts():  return load_json(PROMPTS_FILE, [])
 def save_prompts(p): save_json(PROMPTS_FILE, p)
 
-def load_credits():
-    return load_json(CREDITS_FILE, {"credits": 100, "used": 0})
+def load_balance():
+    return load_json(CREDITS_FILE, {
+        "initial_balance": 0.0,   # saldo inicial que introduce el usuario
+        "spent": 0.0,             # total gastado acumulado
+        "images_generated": 0,    # contador total de imágenes
+        "last_updated": "",
+        "cost_log": []            # log de cada generación con su coste
+    })
 
-def save_credits(d): save_json(CREDITS_FILE, d)
+def save_balance(d): save_json(CREDITS_FILE, d)
 
-def deduct_credits(n=1):
-    d = load_credits()
-    if d["credits"] >= n:
-        d["credits"] -= n
-        d["used"]    += n
-        save_credits(d)
-        return True
-    return False
+def get_price_per_image(endpoint_id="fal-ai/bytedance/seedream/v5/lite"):
+    """Consulta la API de precios de fal.ai y cachea el resultado 1 hora."""
+    cache = load_json(PRICING_CACHE_FILE, {})
+    now = time.time()
+    cache_key = endpoint_id.replace("/", "_")
+
+    # Usar cache si tiene menos de 1 hora
+    if cache_key in cache and now - cache.get(f"{cache_key}_ts", 0) < 3600:
+        return cache[cache_key]
+
+    try:
+        r = requests.get(
+            "https://api.fal.ai/v1/models/pricing",
+            headers={"Authorization": f"Key {st.secrets.get('SEEDREAM_API_KEY', '')}"},
+            params={"endpoint_ids": endpoint_id},
+            timeout=10
+        )
+        data = r.json()
+        prices = data.get("prices", [])
+        for p in prices:
+            if endpoint_id in p.get("endpoint_id", ""):
+                cost = p.get("unit_price", 0.03)
+                cache[cache_key] = cost
+                cache[f"{cache_key}_ts"] = now
+                save_json(PRICING_CACHE_FILE, cache)
+                return cost
+    except Exception:
+        pass
+
+    # Fallback: precio estimado de Seedream Lite
+    return 0.03
+
+def deduct_balance(n_images=1, endpoint="fal-ai/bytedance/seedream/v5/lite"):
+    """Descuenta el coste real en USD del saldo. Devuelve (ok, cost_per_img, total_cost)."""
+    d = load_balance()
+    cost_per = get_price_per_image(endpoint)
+    total_cost = round(cost_per * n_images, 6)
+    remaining = round(d["initial_balance"] - d["spent"], 4)
+
+    if remaining < total_cost:
+        return False, cost_per, total_cost
+
+    d["spent"] = round(d["spent"] + total_cost, 6)
+    d["images_generated"] += n_images
+    d["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    d["cost_log"].append({
+        "date": d["last_updated"],
+        "images": n_images,
+        "cost_per": cost_per,
+        "total": total_cost,
+        "endpoint": endpoint,
+    })
+    # Mantener solo los últimos 500 registros
+    if len(d["cost_log"]) > 500:
+        d["cost_log"] = d["cost_log"][-500:]
+    save_balance(d)
+    return True, cost_per, total_cost
+
+def remaining_balance():
+    d = load_balance()
+    return round(d["initial_balance"] - d["spent"], 4)
 
 # ═══════════════════════════════════════════════════════════
 #  PROMPT LIBRARY  (medias / calcetines, sin marcas)
@@ -244,30 +304,59 @@ with st.sidebar:
         st.stop()
 
     st.markdown("---")
-    cred = load_credits()
-    st.metric("💳 Créditos disponibles", cred["credits"])
-    st.metric("📊 Total usados", cred["used"])
+    bal = load_balance()
+    remaining = remaining_balance()
+    spent     = bal["spent"]
+    initial   = bal["initial_balance"]
+    imgs      = bal["images_generated"]
 
-    col_s1, col_s2 = st.columns(2)
-    with col_s1:
-        if st.button("➕ +50"):
-            cred["credits"] += 50
-            save_credits(cred)
-            st.rerun()
-    with col_s2:
-        if st.button("➕ +100"):
-            cred["credits"] += 100
-            save_credits(cred)
-            st.rerun()
+    # Barra de progreso del saldo
+    if initial > 0:
+        pct_used = min(spent / initial, 1.0)
+        pct_left = 1.0 - pct_used
+        bar_color = "🟢" if pct_left > 0.3 else ("🟡" if pct_left > 0.1 else "🔴")
+        st.metric(f"{bar_color} Saldo restante (estimado)", f"${remaining:.4f}")
+        st.progress(pct_left)
+        st.metric("💸 Gastado total", f"${spent:.4f}")
+        st.metric("🖼️ Imágenes generadas", imgs)
+    else:
+        st.warning("⚠️ Introduce tu saldo inicial de fal.ai")
 
-    manual_credits = st.number_input("Establecer créditos", 0, 99999, cred["credits"], key="set_cred")
-    if st.button("✅ Aplicar"):
-        cred["credits"] = manual_credits
-        save_credits(cred)
-        st.rerun()
+    # Coste por imagen en tiempo real
+    if st.button("🔍 Ver precio actual Seedream", key="check_price"):
+        with st.spinner("Consultando API de precios…"):
+            price = get_price_per_image()
+            est_imgs = int(remaining / price) if price > 0 else 0
+            st.success(f"Seedream Lite: **${price:.4f}**/imagen")
+            st.info(f"Con tu saldo actual puedes generar ~**{est_imgs} imágenes**")
 
     st.markdown("---")
-    st.caption("1 imagen generada = 1 crédito")
+    st.markdown("**⚙️ Actualizar saldo**")
+    st.caption("Consulta tu saldo real en [fal.ai/dashboard](https://fal.ai/dashboard) e introdúcelo aquí")
+    new_initial = st.number_input(
+        "Saldo actual en fal.ai ($)",
+        min_value=0.0, max_value=9999.0,
+        value=float(initial), step=0.01,
+        format="%.2f", key="set_balance"
+    )
+    reset_spent = st.checkbox("Reiniciar gasto acumulado", key="reset_spent")
+    if st.button("✅ Guardar saldo", key="save_bal"):
+        bal["initial_balance"] = new_initial
+        if reset_spent:
+            bal["spent"] = 0.0
+            bal["images_generated"] = 0
+            bal["cost_log"] = []
+        save_balance(bal)
+        st.success(f"Saldo actualizado: ${new_initial:.2f}")
+        st.rerun()
+
+    # Mini log de gastos
+    if bal["cost_log"]:
+        with st.expander("📋 Últimos gastos"):
+            for entry in reversed(bal["cost_log"][-10:]):
+                st.caption(f"🕐 {entry['date']} | {entry['images']}x img | ${entry['total']:.4f} (${entry['cost_per']:.4f}/u)")
+
+    st.markdown("---")
     st.caption(f"Librerías:\n- canvas: {'✅' if CANVAS_OK else '❌ pip install streamlit-drawable-canvas'}\n- comparador: {'✅' if COMPARISON_OK else '❌ pip install streamlit-image-comparison'}")
 
 st.title("🧦 SockEdit Pro Max")
@@ -338,7 +427,7 @@ with tab_editor:
             comp_quality = st.slider("Calidad JPEG", 50, 100, 85, key="ed_q") if do_compress else 85
             out_fmt      = st.selectbox("Formato de salida", ["JPEG","PNG","WEBP"], key="ed_fmt")
 
-        cred = load_credits()
+        cred = load_balance()
         gen_btn = st.button("🚀 Renderizar", type="primary", use_container_width=True, key="ed_gen")
 
     with R:
@@ -347,8 +436,9 @@ with tab_editor:
         if gen_btn:
             if not foto:         st.warning("Sube una imagen base."); st.stop()
             if not prompt:       st.warning("Escribe un prompt."); st.stop()
-            if cred["credits"] < num_imgs:
-                st.error(f"Créditos insuficientes ({cred['credits']} disponibles, {num_imgs} necesarios)"); st.stop()
+            price_est = get_price_per_image() * num_imgs
+            if remaining_balance() < price_est:
+                st.error(f"Saldo insuficiente (estimado necesario: ${price_est:.4f}, disponible: ${remaining_balance():.4f})"); st.stop()
 
             final_prompt = translate_to_english(prompt) if auto_tr else prompt
 
@@ -364,7 +454,8 @@ with tab_editor:
                     if "images" not in data:
                         st.error(f"Error API: {data}")
                     else:
-                        deduct_credits(len(data["images"]))
+                        ok, cpp, total = deduct_balance(len(data["images"]))
+                        st.caption(f"💸 Coste: ${total:.4f} (${cpp:.4f}/imagen)")
                         history = load_history()
                         st.success(f"✅ {len(data['images'])} imagen(es) generadas")
 
@@ -456,7 +547,7 @@ with tab_inpaint:
             with c2:
                 auto_tr_inp = st.checkbox("Auto-traducir", True, key="inp_tr")
 
-            cred = load_credits()
+            cred = load_balance()
             inp_btn = st.button("🎨 Aplicar Inpainting", type="primary", use_container_width=True, key="inp_btn")
 
         with R2:
@@ -470,8 +561,8 @@ with tab_inpaint:
                     st.warning("Pinta primero las zonas a editar.")
                 elif not prompt_inp:
                     st.warning("Escribe qué poner en la zona pintada.")
-                elif cred["credits"] < 1:
-                    st.error("Sin créditos disponibles.")
+                elif remaining_balance() < get_price_per_image():
+                    st.error("Saldo insuficiente.")
                 else:
                     fp = translate_to_english(prompt_inp) if auto_tr_inp else prompt_inp
                     with st.spinner("🎭 Procesando inpainting…"):
@@ -495,7 +586,7 @@ with tab_inpaint:
                                                guidance=guid_inp)
 
                             if "images" in data:
-                                deduct_credits(1)
+                                deduct_balance(1)
                                 url = upload_cloudinary(data["images"][0]["url"])
                                 pil_r = fetch_pil(url)
 
@@ -555,11 +646,12 @@ with tab_batch:
             b_q     = st.slider("Calidad", 50, 100, 85, key="b_q") if b_comp else 85
             b_fmt   = st.selectbox("Formato salida", ["JPEG","PNG","WEBP"], key="b_fmt")
 
-        cred = load_credits()
         n_needed = len(fotos_b) if fotos_b else 0
         if n_needed:
-            color = "🟢" if cred["credits"] >= n_needed else "🔴"
-            st.info(f"{color} Usará **{n_needed}** crédito(s) — Disponibles: **{cred['credits']}**")
+            price_est = get_price_per_image() * n_needed
+            rem = remaining_balance()
+            color = "🟢" if rem >= price_est else "🔴"
+            st.info(f"{color} Coste estimado: **${price_est:.4f}** ({n_needed} imgs) — Saldo: **${rem:.4f}**")
 
         batch_btn = st.button("🚀 Procesar todo", type="primary", use_container_width=True, key="batch_go")
 
@@ -569,8 +661,9 @@ with tab_batch:
         if batch_btn:
             if not fotos_b:         st.warning("Sube imágenes."); st.stop()
             if not prompt_b:        st.warning("Escribe un prompt."); st.stop()
-            if cred["credits"] < n_needed:
-                st.error(f"Créditos insuficientes ({cred['credits']} disponibles, {n_needed} necesarios)"); st.stop()
+            price_total = get_price_per_image() * n_needed
+            if remaining_balance() < price_total:
+                st.error(f"Saldo insuficiente (necesario: ${price_total:.4f}, disponible: ${remaining_balance():.4f})"); st.stop()
 
             fp_b = translate_to_english(prompt_b) if auto_b else prompt_b
             progress = st.progress(0, text="Iniciando cola de trabajos…")
@@ -584,7 +677,7 @@ with tab_batch:
                                      neg=neg_b, seed=seed_b if seed_b > 0 else None,
                                      guidance=guid_b, num=1, size=size_b)
                     if "images" in data:
-                        deduct_credits(1)
+                        deduct_balance(1)
                         url  = upload_cloudinary(data["images"][0]["url"])
                         pil  = fetch_pil(url)
                         raw, pil_pp = post_process(pil, crop=b_crop, crop_ratio=b_ratio,

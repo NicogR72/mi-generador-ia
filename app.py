@@ -306,12 +306,6 @@ def call_inpaint(prompt, img_b64, mask_b64, neg="", seed=None, guidance=7.5):
 # ═══════════════════════════════════════════════════════════
 with st.sidebar:
     st.title("🧦 SockEdit Pro Max")
-    password = st.text_input("🔐 Contraseña", type="password")
-    VALID_PWD = st.secrets.get("APP_PASSWORD", "2525Nico.")
-    if password != VALID_PWD:
-        st.info("Introduce tu contraseña para acceder.")
-        st.stop()
-
     st.markdown("---")
     bal = load_balance()
     remaining = remaining_balance()

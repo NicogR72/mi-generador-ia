@@ -138,6 +138,15 @@ def remaining_balance():
 #  PROMPT LIBRARY  (medias / calcetines, sin marcas)
 # ═══════════════════════════════════════════════════════════
 PRESETS = {
+    "✏️ Prompt Manual": [
+        "__MANUAL__"
+    ],
+    "🪨 Mármol Blanco": [
+        "Flat lay on luxurious white Carrara marble surface, soft natural window light from the side, subtle veining texture visible, clean and elegant product photography, minimal shadows, high-end editorial feel",
+        "Product on polished white marble floor, overhead top-down view, bright even studio lighting, ultra clean background, premium commercial photography style",
+        "Lifestyle shot on white marble countertop, warm soft natural light, shallow depth of field, elegant and minimal composition, fine veining in marble, luxury aesthetic",
+        "Ghost mannequin on white marble pedestal, dramatic side lighting, sharp details, luxury fashion editorial, seamless white marble background with subtle grey veins",
+    ],
     "📸 E-commerce": [
         "Pure white seamless background, professional product photography, soft studio lighting, sharp focus, no shadows",
         "Clean white background, flat lay perspective, even diffused lighting, e-commerce style",
@@ -385,8 +394,15 @@ with tab_editor:
 
         # — Prompt con presets —
         cat = st.selectbox("Categoría preset", list(PRESETS.keys()), key="ed_cat")
-        preset_sel = st.selectbox("Preset", ["(personalizado)"] + PRESETS[cat], key="ed_preset")
-        default_prompt = preset_sel if preset_sel != "(personalizado)" else ""
+
+        is_manual = (cat == "✏️ Prompt Manual")
+
+        if is_manual:
+            st.info("✏️ Modo manual — escribe tú el prompt completo abajo.")
+            default_prompt = ""
+        else:
+            preset_sel = st.selectbox("Preset", ["(personalizado)"] + PRESETS[cat], key="ed_preset")
+            default_prompt = preset_sel if preset_sel not in ("(personalizado)", "__MANUAL__") else ""
 
         prompt = st.text_area("✍️ Prompt (español o inglés)", value=default_prompt, height=100, key="ed_prompt")
 
@@ -624,9 +640,15 @@ with tab_batch:
             st.success(f"📁 {len(fotos_b)} imagen(es) cargadas")
 
         cat_b    = st.selectbox("Categoría preset", list(PRESETS.keys()), key="b_cat")
-        preset_b = st.selectbox("Preset", ["(personalizado)"] + PRESETS[cat_b], key="b_preset")
+        is_manual_b = (cat_b == "✏️ Prompt Manual")
+        if is_manual_b:
+            st.info("✏️ Modo manual — escribe tú el prompt completo.")
+            preset_b_default = ""
+        else:
+            preset_b = st.selectbox("Preset", ["(personalizado)"] + PRESETS[cat_b], key="b_preset")
+            preset_b_default = preset_b if preset_b not in ("(personalizado)", "__MANUAL__") else ""
         prompt_b = st.text_area("Prompt para TODAS las imágenes",
-                                value=preset_b if preset_b != "(personalizado)" else "",
+                                value=preset_b_default,
                                 key="b_prompt")
         neg_b    = st.text_area("Prompt negativo", height=60, key="b_neg")
 

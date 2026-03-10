@@ -7,7 +7,7 @@ import cloudinary.uploader
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="SockEdit Pro Max", layout="wide", page_icon="🧦")
 
-# Configuración Cloudinary
+# Configuración Cloudinary (Baúl Permanente)
 if "CLOUDINARY_CLOUD_NAME" in st.secrets:
     cloudinary.config(
         cloud_name = st.secrets["CLOUDINARY_CLOUD_NAME"],
@@ -32,20 +32,16 @@ tab1, tab2 = st.tabs(["🖌️ Editor Pro", "📂 Archivo Histórico"])
 
 with tab1:
     col_in, col_out = st.columns([1, 1])
-    
     with col_in:
         st.subheader("Configuración")
         foto = st.file_uploader("Subir foto base", type=["jpg", "png", "jpeg"])
-        
         estilo = st.selectbox("Modo de Trabajo", [
             "Manual (Usar solo mi prompt)", 
             "Fondo Blanco E-commerce", 
             "Urbano Streetwear", 
             "Lujo Cinematográfico"
         ])
-        
-        prompt_usuario = st.text_area("Tu Prompt / Instrucciones", 
-                                    placeholder="Ej: 'Transform these socks into a neon vaporwave style'...")
+        prompt_usuario = st.text_area("Tu Prompt / Instrucciones", placeholder="Describe el cambio...")
 
     with col_out:
         st.subheader("Resultado")
@@ -53,12 +49,12 @@ with tab1:
             if foto and prompt_usuario:
                 with st.spinner("Procesando con Seedream 5.0..."):
                     try:
-                        # A. Preparar imagen
+                        # A. Imagen a Base64
                         img_bytes = foto.getvalue()
                         encoded_string = base64.b64encode(img_bytes).decode("utf-8")
                         data_uri = f"data:image/jpeg;base64,{encoded_string}"
 
-                        # B. Definir el prompt final
+                        # B. Lógica de Prompts
                         if estilo == "Manual (Usar solo mi prompt)":
                             final_prompt = prompt_usuario
                         else:
@@ -69,7 +65,6 @@ with tab1:
                             }
                             final_prompt = f"{estilos_dict[estilo]} {prompt_usuario}"
 
-                        # C. Llamada API
+                        # C. Petición a la API (Aquí estaba el error de la llave)
                         api_url = "https://fal.run/fal-ai/bytedance/seedream/v5/lite/edit"
-                        headers = {"Authorization": f"Key {st.secrets['SEEDREAM_API_KEY']}"}
-                        payload = {"prompt": final_prompt,
+                        headers

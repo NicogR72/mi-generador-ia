@@ -656,7 +656,7 @@ with tab_batch:
         # Botón para cargar el preset en el campo de texto
         if not is_manual_b and preset_b_val:
             if st.button("📋 Usar este preset como prompt", key="b_load_preset"):
-                st.session_state["b_prompt_text"] = preset_b_val
+                st.session_state["b_prompt"] = preset_b_val
                 st.rerun()
 
         if "b_prompt_text" not in st.session_state:
@@ -664,10 +664,9 @@ with tab_batch:
 
         prompt_b = st.text_area(
             "✍️ Prompt que se aplicará a TODAS las imágenes",
-            value=st.session_state["b_prompt_text"],
             height=120,
             key="b_prompt",
-            help="Este es el prompt real que se envía a la IA. Si seleccionas un preset arriba, pulsa 'Usar este preset' para cargarlo aquí."
+            help="Pulsa 'Usar este preset' para cargarlo aquí, luego edítalo si quieres."
         )
         # Sincronizar con el state
         st.session_state["b_prompt_text"] = prompt_b

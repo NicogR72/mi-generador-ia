@@ -20,7 +20,7 @@ if "history" not in st.session_state:
     st.session_state.history = []
 
 password = st.sidebar.text_input("🔑 Acceso Profesional", type="password")
-if password != "TU_CONTRASEÑA_AQUI": # <--- CAMBIA ESTO
+if password != "2525Nico.": # <--- CAMBIA ESTO
     st.warning("Panel bloqueado. Introduce tu clave.")
     st.stop()
 
